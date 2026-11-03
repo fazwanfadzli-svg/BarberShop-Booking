@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Book an Appointment</title>
+<style>
+  :root { --ink:#1b1b1b; --bg:#f6f3ee; --card:#fff; --accent:#b8892f; --line:#e2ddd3; --bad:#b3261e; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { background:var(--ink); color:#fff; padding:28px 16px; text-align:center; }
+  header h1 { margin:0 0 4px; font-size:1.6rem; }
+  header p { margin:0; opacity:.75; }
+  main { max-width:520px; margin:20px auto; padding:0 16px 40px; }
+  form { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:20px; }
+  label { display:block; font-weight:600; margin:14px 0 6px; }
+  input, select { width:100%; padding:12px; font-size:1rem; border:1px solid var(--line); border-radius:8px; background:#fff; }
+  .slots { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .slot { padding:10px 0; border:1px solid var(--line); border-radius:8px; background:#fff; font-size:.95rem; cursor:pointer; }
+  .slot:hover:not(:disabled) { border-color:var(--accent); }
+  .slot.selected { background:var(--accent); border-color:var(--accent); color:#fff; }
+  .slot:disabled { background:#eee; color:#aaa; text-decoration:line-through; cursor:not-allowed; }
+  button.submit { width:100%; margin-top:20px; padding:14px; font-size:1.05rem; font-weight:700; border:0; border-radius:8px; background:var(--ink); color:#fff; cursor:pointer; }
+  button.submit:disabled { opacity:.5; cursor:not-allowed; }
+  .msg { margin-top:14px; padding:12px; border-radius:8px; display:none; }
+  .msg.ok { display:block; background:#e6f4ea; color:#1e6b34; }
+  .msg.err { display:block; background:#fce8e6; color:var(--bad); }
+  .hint { font-size:.9rem; color:#666; margin:6px 0 0; }
+  .hp { position:absolute; left:-9999px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="shopName">Barbershop</h1>
+  <p>Pick a service, date and time</p>
+</header>
+
+<main>
+  <form id="form" autocomplete="off">
+    <label for="name">Your name</label>
+    <input id="name" required maxlength="60">
+
+    <label for="phone">Phone number</label>
+    <input id="phone" type="tel" required maxlength="20" placeholder="e.g. 012-3456789">
+
+    <label for="service">Service</label>
+    <select id="service" required></select>
+
+    <label for="date">Date</label>
+    <input id="date" type="date" required>
+    <p class="hint" id="dateHint"></p>
+
+    <label>Time</label>
+    <div class="slots" id="slots"></div>
+    <p class="hint" id="slotHint">Choose a date first.</p>
+
+    <input class="hp" id="website" tabindex="-1" aria-hidden="true">
+
+    <button class="submit" id="submitBtn" type="submit" disabled>Book appointment</button>
+    <div class="msg" id="msg"></div>
+  </form>
+</main>
+
+<script>
+/* ============ EDIT THIS SECTION ============ */
+const CONFIG = {
+  shopName: "kumando Barbershop",
+  apiUrl: "https://script.google.com/macros/s/AKfycbwsgkNCxExbdBeQZxC-oz42UctTrGi0AtUzIRoz8K6u4Ws0dywSlwCPYtGVJ-dcGKM6-A/exec",
+  services: ["Haircut", "Haircut + Beard", "Beard Trim", "Kids Haircut"],
+  openTime: "17:00",       // first slot
+  closeTime: "23:00",      // shop closes (last slot ends here)
+  slotMinutes: 40,
+  closedWeekdays: [],      // 0=Sun, 1=Mon ... 6=Sat. Example: [1] closes on Monday
+  daysAhead: 30            // how far ahead people can book
+};
+/* ============================================ */
+
+const $ = id => document.getElementById(id);
+let selectedTime = null;
+
+$("shopName").textContent = CONFIG.shopName;
+document.title = "Book - " + CONFIG.shopName;
+CONFIG.services.forEach(s => $("service").add(new Option(s, s)));
+
+function pad(n){ return String(n).padStart(2,"0"); }
+function toISO(d){ return d.getFullYear()+"-"+pad(d.getMonth()+1)+"-"+pad(d.getDate()); }
+function toMin(t){ const [h,m]=t.split(":").map(Number); return h*60+m; }
+function fromMin(m){ return pad(Math.floor(m/60))+":"+pad(m%60); }
+
+const today = new Date();
+const maxDate = new Date(); maxDate.setDate(today.getDate()+CONFIG.daysAhead);
+$("date").min = toISO(today);
+$("date").max = toISO(maxDate);
+
+function allSlots(){
+  const out=[];
+  for(let m=toMin(CONFIG.openTime); m+CONFIG.slotMinutes<=toMin(CONFIG.closeTime); m+=CONFIG.slotMinutes) out.push(fromMin(m));
+  return out;
+}
+
+function showMsg(text, ok){
+  const el=$("msg"); el.textContent=text; el.className="msg "+(ok?"ok":"err");
+}
+
+function renderSlots(booked){
+  const box=$("slots"); box.innerHTML=""; selectedTime=null; $("submitBtn").disabled=true;
+  const dateStr=$("date").value;
+  const isToday = dateStr===toISO(new Date());
+  const nowMin = new Date().getHours()*60+new Date().getMinutes();
+  let available=0;
+  allSlots().forEach(t=>{
+    const b=document.createElement("button");
+    b.type="button"; b.className="slot"; b.textContent=t;
+    const taken=booked.includes(t) || (isToday && toMin(t)<=nowMin);
+    if(taken) b.disabled=true; else available++;
+    b.onclick=()=>{
+      document.querySelectorAll(".slot").forEach(x=>x.classList.remove("selected"));
+      b.classList.add("selected"); selectedTime=t; $("submitBtn").disabled=false;
+    };
+    box.appendChild(b);
+  });
+  $("slotHint").textContent = available ? "Greyed-out times are already taken." : "Fully booked. Please try another day.";
+}
+
+async function loadSlots(){
+  const d=$("date").value; $("dateHint").textContent=""; $("msg").className="msg";
+  if(!d) return;
+  const day=new Date(d+"T00:00:00").getDay();
+  if(CONFIG.closedWeekdays.includes(day)){
+    $("slots").innerHTML=""; $("slotHint").textContent="";
+    $("dateHint").textContent="Sorry, we are closed on this day."; $("submitBtn").disabled=true; return;
+  }
+  $("slotHint").textContent="Checking availability...";
+  try{
+    const r=await fetch(CONFIG.apiUrl+"?date="+encodeURIComponent(d));
+    const j=await r.json();
+    renderSlots(j.booked||[]);
+  }catch(e){
+    $("slotHint").textContent="Could not load times. Please refresh and try again.";
+  }
+}
+$("date").addEventListener("change", loadSlots);
+
+$("form").addEventListener("submit", async e=>{
+  e.preventDefault();
+  if(!selectedTime) return;
+  $("submitBtn").disabled=true; $("submitBtn").textContent="Booking...";
+  const payload={
+    name:$("name").value.trim(), phone:$("phone").value.trim(),
+    service:$("service").value, date:$("date").value, time:selectedTime,
+    website:$("website").value
+  };
+  try{
+    const r=await fetch(CONFIG.apiUrl,{method:"POST",headers:{"Content-Type":"text/plain;charset=utf-8"},body:JSON.stringify(payload)});
+    const j=await r.json();
+    if(j.ok){
+      showMsg("Booked! "+payload.service+" on "+payload.date+" at "+payload.time+". See you then, "+payload.name+".", true);
+      $("form").reset(); $("slots").innerHTML=""; $("slotHint").textContent="Choose a date first."; selectedTime=null;
+    }else{
+      showMsg(j.error||"Something went wrong.", false);
+      if(j.error && j.error.toLowerCase().includes("taken")) loadSlots();
+    }
+  }catch(err){
+    showMsg("Network error. Please try again.", false);
+  }
+  $("submitBtn").textContent="Book appointment";
+});
+</script>
+</body>
+</html>
