@@ -64,11 +64,11 @@
 <script>
 /* ============ EDIT THIS SECTION ============ */
 const CONFIG = {
-  shopName: "Kumando Barbershop",
+  shopName: "Kumando BarberShop",
   apiUrl: "https://script.google.com/macros/s/AKfycbwsgkNCxExbdBeQZxC-oz42UctTrGi0AtUzIRoz8K6u4Ws0dywSlwCPYtGVJ-dcGKM6-A/exec",
   services: ["Haircut", "Haircut + Beard", "Beard Trim", "Kids Haircut"],
-  openTime: "17:00",       // first slot
-  closeTime: "23:00",      // shop closes (last slot ends here)
+  openTime: "17:30",       // first slot
+  closeTime: "23:30",      // shop closes (last slot ends here)
   slotMinutes: 40,
   closedWeekdays: [],      // 0=Sun, 1=Mon ... 6=Sat. Example: [1] closes on Monday
   daysAhead: 30            // how far ahead people can book
@@ -77,6 +77,9 @@ const CONFIG = {
 
 const $ = id => document.getElementById(id);
 let selectedTime = null;
+let closedDates = [];
+const closedReady = fetch(CONFIG.apiUrl + "?closed=1")
+  .then(r => r.json()).then(j => { closedDates = j.closed || []; }).catch(() => {});
 
 $("shopName").textContent = CONFIG.shopName;
 document.title = "Book - " + CONFIG.shopName;
@@ -125,8 +128,9 @@ function renderSlots(booked){
 async function loadSlots(){
   const d=$("date").value; $("dateHint").textContent=""; $("msg").className="msg";
   if(!d) return;
+  await closedReady;
   const day=new Date(d+"T00:00:00").getDay();
-  if(CONFIG.closedWeekdays.includes(day)){
+  if(CONFIG.closedWeekdays.includes(day) || closedDates.includes(d)){
     $("slots").innerHTML=""; $("slotHint").textContent="";
     $("dateHint").textContent="Sorry, we are closed on this day."; $("submitBtn").disabled=true; return;
   }
